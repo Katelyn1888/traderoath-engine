@@ -114,10 +114,12 @@ async function sendAlert(oath, subject, body) {
   }
   const digits = String(oath.pphone).replace(/[^\d+]/g, "");
   const to = digits.startsWith("+") ? digits : "+1" + digits.replace(/^1/, "");
+  const trialBody = process.env.TWILIO_TEMPLATE || "sms_account_alerts";
+  const custom = process.env.TWILIO_CUSTOM === "1";
   const bodySms = new URLSearchParams({
     To: to,
     From: TWILIO_FROM,
-    Body: subject + " — " + body,
+    Body: custom ? (subject + " — " + body) : trialBody,
   });
   const smsRes = await fetch("https://api.twilio.com/2010-04-01/Accounts/" + TWILIO_SID + "/Messages.json", {
     method: "POST",
