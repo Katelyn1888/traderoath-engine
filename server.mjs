@@ -210,8 +210,15 @@ function evaluate(oath, fill) {
   return alerts;
 }
 
+function tvHosts(demo) {
+  return demo
+    ? { rest: "https://demo.tradovateapi.com/v1", ws: "wss://demo.tradovateapi.com/v1/websocket" }
+    : { rest: "https://live.tradovateapi.com/v1", ws: "wss://live.tradovateapi.com/v1/websocket" };
+}
+
 async function tradovateToken(creds) {
-  const res = await fetch(TV_REST + "/auth/accessTokenRequest", {
+  const rest = tvHosts(creds.demo).rest;
+  const res = await fetch(rest + "/auth/accessTokenRequest", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -229,11 +236,11 @@ async function tradovateToken(creds) {
   return data;
 }
 
-function watchTradovate(oathId, accessToken, userId) {
+function watchTradovate(oathId, accessToken, userId, demo) {
   if (sockets.has(oathId)) {
     try { sockets.get(oathId).close(); } catch {}
   }
-  const ws = new WebSocket(TV_WS);
+  const ws = new WebSocket(tvHosts(demo).ws);
   sockets.set(oathId, ws);
   let n = 1;
   ws.addEventListener("open", () => {
@@ -268,7 +275,7 @@ function watchTradovate(oathId, accessToken, userId) {
     sockets.delete(oathId);
     setTimeout(() => {
       const o = oaths.get(oathId);
-      if (o && o.tvToken) watchTradovate(oathId, o.tvToken, o.tvUserId);
+      if (o && o.tvToken) watchTradovate(oathId, o.tvToken, o.tvUserId, o.tvDemo);
     }, 5000);
   });
 }
@@ -450,20 +457,52 @@ async function handle(method, path, body, query = new URLSearchParams()) {
   }
 
   if (path === "/connect/tradovate" && method === "POST") {
-    const id = body.id;
-    const oath = oaths.get(id);
-    if (!oath) return json({ ok: false, error: "Unknown oath" }, 404);
+    let id = body.id;
+    let oath = id ? oaths.get(id) : null;
+    if (!oath) {
+      id = crypto.randomUUID();
+      oaths.set(id, { ...body, id, paid: true, accepted: false, locked: false, day: emptyDay() });
+      oath = oaths.get(id);
+    }
     try {
       const tok = await tradovateToken(body);
+      const rest = tvHosts(!!body.demo).rest;
+      const listRes = await fetch(rest + "/account/list", {
+        headers: { Authorization: "Bearer " + tok.accessToken },
+      });
+      const accounts = await listRes.json().catch(() => []);
       oath.tvToken = tok.accessToken;
       oath.tvUserId = tok.userId;
+      oath.tvDemo = !!body.demo;
       oath.platform = "tradovate";
-      watchTradovate(id, tok.accessToken, tok.userId);
+      oath.tvAccounts = Array.isArray(accounts) ? accounts : [];
       save();
-      return json({ ok: true, userId: tok.userId });
+      return json({
+        ok: true,
+        id,
+        userId: tok.userId,
+        accounts: (Array.isArray(accounts) ? accounts : []).map((a) => ({
+          id: a.id,
+          name: a.name || a.nickname || String(a.id),
+          active: a.active !== false,
+        })),
+      });
     } catch (err) {
-      return json({ ok: false, error: String(err.message || err) }, 401);
+      return json({
+        ok: false,
+        error: String(err.message || err),
+        hint: "Prop and eval Tradovate logins usually have no API. Tradovate requires a live funded account plus the $25 API add-on.",
+      }, 401);
     }
+  }
+
+  if (path === "/connect/tradovate/watch" && method === "POST") {
+    const oath = oaths.get(body.id);
+    if (!oath || !oath.tvToken) return json({ ok: false, error: "Log into Tradovate first" }, 400);
+    oath.tvAccountId = body.accountId;
+    watchTradovate(body.id, oath.tvToken, oath.tvUserId, oath.tvDemo);
+    save();
+    return json({ ok: true, watching: body.accountId });
   }
 
   if (path === "/webhook/ninjatrader" && method === "POST") {
