@@ -1,0 +1,8 @@
+{
+  "name": "traderoath-engine",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs"
+  }
+}
