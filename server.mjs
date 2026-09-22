@@ -285,9 +285,7 @@ function json(data, status = 200) {
   });
 }
 
-const server = Deno?.serve
-  ? null
-  : await import("node:http").then(({ createServer }) =>
+const server = await import("node:http").then(({ createServer }) =>
       createServer(async (req, res) => {
         const url = new URL(req.url, "http://localhost");
         if (req.method === "OPTIONS") {
@@ -535,6 +533,4 @@ async function handle(method, path, body, query = new URLSearchParams()) {
   return json({ ok: false, error: "Not found" }, 404);
 }
 
-if (server) {
-  server.listen(PORT, () => console.log("TraderOath engine on " + PORT));
-}
+server.listen(PORT, "0.0.0.0", () => console.log("TraderOath engine on " + PORT));
