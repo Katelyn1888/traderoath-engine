@@ -62,7 +62,7 @@ function todayKey() {
 }
 
 function emptyDay() {
-  return { date: todayKey(), fills: [], lastWinAt: 0, lastLossAt: 0, realized: 0, blown: false };
+  return { date: todayKey(), fills: [], lastWinAt: 0, lastLossAt: 0, realized: 0, blown: false, smsSent: 0 };
 }
 
 function dayState(oath) {
@@ -112,6 +112,13 @@ async function sendAlert(oath, subject, body) {
     out.sms = "twilio-not-configured";
     return out;
   }
+  const cap = Math.max(0, Number(oath.smsCap || 5));
+  const d = dayState(oath);
+  if ((d.smsSent || 0) >= cap) {
+    out.sms = "capped";
+    out.smsCap = cap;
+    return out;
+  }
   const digits = String(oath.pphone).replace(/[^\d+]/g, "");
   const to = digits.startsWith("+") ? digits : "+1" + digits.replace(/^1/, "");
   const trialBody = process.env.TWILIO_TEMPLATE || "sms_account_alerts";
@@ -132,6 +139,10 @@ async function sendAlert(oath, subject, body) {
   const smsJson = await smsRes.json().catch(() => ({}));
   out.sms = smsRes.ok ? "sent" : (smsJson.message || smsJson.code || "twilio-error");
   out.smsTo = to;
+  if (smsRes.ok) {
+    d.smsSent = (d.smsSent || 0) + 1;
+    out.smsLeft = Math.max(0, cap - d.smsSent);
+  }
   return out;
 }
 
@@ -558,7 +569,7 @@ async function handle(method, path, body, query = new URLSearchParams()) {
     if (email) params.set("customer_email", email);
     params.set("line_items[0][quantity]", "1");
     params.set("line_items[0][price_data][currency]", "usd");
-    params.set("line_items[0][price_data][unit_amount]", "499");
+    params.set("line_items[0][price_data][unit_amount]", "999");
     params.set("line_items[0][price_data][recurring][interval]", "month");
     params.set("line_items[0][price_data][product_data][name]", "TraderOath founding");
     const res = await fetch("https://api.stripe.com/v1/checkout/sessions", {
