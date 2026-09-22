@@ -6,9 +6,10 @@ const PORT = Number(process.env.PORT || 8787);
 const FORMSPREE = process.env.FORMSPREE_URL || "https://formspree.io/f/xppzvjbo";
 const RESEND_KEY = process.env.RESEND_API_KEY || "";
 const STRIPE_KEY = process.env.STRIPE_SECRET_KEY || "";
-const TWILIO_SID = process.env.TWILIO_ACCOUNT_SID || "";
-const TWILIO_TOKEN = process.env.TWILIO_AUTH_TOKEN || "";
-const TWILIO_FROM = process.env.TWILIO_FROM || "";
+const TWILIO_SID = process.env.TWILIO_ACCOUNT_SID || process.env.TWILIO_SID || "";
+const TWILIO_TOKEN = process.env.TWILIO_AUTH_TOKEN || process.env.TWILIO_TOKEN || "";
+const TWILIO_FROM = process.env.TWILIO_FROM || process.env.TWILIO_PHONE || "";
+const RESEND_FROM = process.env.RESEND_FROM || "TraderOath <onboarding@resend.dev>";
 const DEMO = process.env.TRADOVATE_DEMO === "1";
 const TV_REST = DEMO
   ? "https://demo.tradovateapi.com/v1"
@@ -83,7 +84,7 @@ async function sendAlert(oath, subject, body) {
       method: "POST",
       headers: { Authorization: "Bearer " + RESEND_KEY, "Content-Type": "application/json" },
       body: JSON.stringify({
-        from: "TraderOath <oath@traderoath.com>",
+        from: RESEND_FROM,
         to: [oath.pemail],
         subject,
         text: body,
@@ -332,7 +333,7 @@ const server = await import("node:http").then(({ createServer }) =>
 
 async function handle(method, path, body, query = new URLSearchParams()) {
   if (path === "/health") {
-    return json({ ok: true, oaths: oaths.size, sockets: sockets.size, affiliates: affiliates.size });
+    return json({ ok: true, oaths: oaths.size, twilio: !!(TWILIO_SID && TWILIO_TOKEN && TWILIO_FROM), resend: !!RESEND_KEY });
   }
 
   if (path === "/auth/link" && method === "POST") {
