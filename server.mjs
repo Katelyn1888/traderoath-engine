@@ -70,6 +70,7 @@ function dayState(oath) {
 }
 
 async function sendAlert(oath, subject, body) {
+  const out = { email: "none", sms: "none" };
   const payload = {
     email: oath.pemail,
     name: oath.pname,
@@ -88,6 +89,7 @@ async function sendAlert(oath, subject, body) {
         text: body,
       }),
     });
+    out.email = res.ok ? "resend" : "resend-error";
     if (!res.ok) console.error("resend", await res.text());
   } else {
     await fetch(FORMSPREE, {
@@ -95,25 +97,39 @@ async function sendAlert(oath, subject, body) {
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify(payload),
     });
+    out.email = "formspree";
   }
-  if (oath.alert_sms !== false && oath.pphone && TWILIO_SID && TWILIO_TOKEN && TWILIO_FROM) {
-    const to = String(oath.pphone).replace(/[^\d+]/g, "");
-    if (to) {
-      const bodySms = new URLSearchParams({
-        To: to.startsWith("+") ? to : "+1" + to,
-        From: TWILIO_FROM,
-        Body: subject + " — " + body,
-      });
-      await fetch("https://api.twilio.com/2010-04-01/Accounts/" + TWILIO_SID + "/Messages.json", {
-        method: "POST",
-        headers: {
-          Authorization: "Basic " + Buffer.from(TWILIO_SID + ":" + TWILIO_TOKEN).toString("base64"),
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: bodySms,
-      }).catch((err) => console.error("twilio", err));
-    }
+  if (oath.alert_sms === false || oath.alert_sms === "false") {
+    out.sms = "off";
+    return out;
   }
+  if (!oath.pphone) {
+    out.sms = "no-phone-on-oath";
+    return out;
+  }
+  if (!TWILIO_SID || !TWILIO_TOKEN || !TWILIO_FROM) {
+    out.sms = "twilio-not-configured";
+    return out;
+  }
+  const digits = String(oath.pphone).replace(/[^\d+]/g, "");
+  const to = digits.startsWith("+") ? digits : "+1" + digits.replace(/^1/, "");
+  const bodySms = new URLSearchParams({
+    To: to,
+    From: TWILIO_FROM,
+    Body: subject + " — " + body,
+  });
+  const smsRes = await fetch("https://api.twilio.com/2010-04-01/Accounts/" + TWILIO_SID + "/Messages.json", {
+    method: "POST",
+    headers: {
+      Authorization: "Basic " + Buffer.from(TWILIO_SID + ":" + TWILIO_TOKEN).toString("base64"),
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: bodySms,
+  });
+  const smsJson = await smsRes.json().catch(() => ({}));
+  out.sms = smsRes.ok ? "sent" : (smsJson.message || smsJson.code || "twilio-error");
+  out.smsTo = to;
+  return out;
 }
 
 function evaluate(oath, fill) {
@@ -521,9 +537,10 @@ async function handle(method, path, body, query = new URLSearchParams()) {
       timestamp: body.timestamp || Date.now(),
     };
     const alerts = evaluate(oath, fill);
-    for (const a of alerts) await sendAlert(oath, a.subject, a.body);
+    let delivery = { email: "none", sms: "none", phone: oath.pphone || "" };
+    for (const a of alerts) delivery = await sendAlert(oath, a.subject, a.body);
     save();
-    return json({ ok: true, alerts: alerts.length });
+    return json({ ok: true, alerts: alerts.length, delivery });
   }
 
   if (path === "/checkout" && method === "POST") {
@@ -532,7 +549,7 @@ async function handle(method, path, body, query = new URLSearchParams()) {
     const email = body.email || "";
     const params = new URLSearchParams();
     params.set("mode", "subscription");
-    params.set("success_url", SITE + "/live.html?paid=1");
+    params.set("success_url", SITE + "/connect.html?paid=1");
     params.set("cancel_url", SITE + "/pay.html?canceled=1");
     if (oathId) params.set("client_reference_id", oathId);
     if (email) params.set("customer_email", email);
