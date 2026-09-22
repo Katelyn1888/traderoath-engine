@@ -495,7 +495,7 @@ async function handle(method, path, body, query = new URLSearchParams()) {
     params.set("mode", "subscription");
     params.set("success_url", SITE + "/live.html?paid=1");
     params.set("cancel_url", SITE + "/pay.html?canceled=1");
-    params.set("client_reference_id", oathId);
+    if (oathId) params.set("client_reference_id", oathId);
     if (email) params.set("customer_email", email);
     params.set("line_items[0][quantity]", "1");
     params.set("line_items[0][price_data][currency]", "usd");
