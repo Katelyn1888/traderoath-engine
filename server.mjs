@@ -9,7 +9,7 @@ const STRIPE_KEY = process.env.STRIPE_SECRET_KEY || "";
 const TWILIO_SID = process.env.TWILIO_ACCOUNT_SID || process.env.TWILIO_SID || "";
 const TWILIO_TOKEN = process.env.TWILIO_AUTH_TOKEN || process.env.TWILIO_TOKEN || "";
 const TWILIO_FROM = process.env.TWILIO_FROM || process.env.TWILIO_PHONE || "";
-const RESEND_FROM = process.env.RESEND_FROM || "TraderOath <onboarding@resend.dev>";
+const RESEND_FROM = process.env.RESEND_FROM || "TraderOath <oath@traderoath.com>";
 const DEMO = process.env.TRADOVATE_DEMO === "1";
 const TV_REST = DEMO
   ? "https://demo.tradovateapi.com/v1"
@@ -92,6 +92,8 @@ async function sendAlert(oath, subject, body) {
     });
     const errText = res.ok ? "" : await res.text();
     out.email = res.ok ? "resend" : "resend-error";
+    out.emailFrom = RESEND_FROM;
+    out.emailTo = oath.pemail || "";
     if (!res.ok) out.emailError = String(errText).slice(0, 180);
   } else {
     out.email = RESEND_KEY ? "no-lookout-email" : "resend-not-configured";
