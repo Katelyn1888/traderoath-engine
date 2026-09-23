@@ -90,15 +90,11 @@ async function sendAlert(oath, subject, body) {
         text: body,
       }),
     });
+    const errText = res.ok ? "" : await res.text();
     out.email = res.ok ? "resend" : "resend-error";
-    if (!res.ok) console.error("resend", await res.text());
+    if (!res.ok) out.emailError = String(errText).slice(0, 180);
   } else {
-    await fetch(FORMSPREE, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify(payload),
-    });
-    out.email = "formspree";
+    out.email = RESEND_KEY ? "no-lookout-email" : "resend-not-configured";
   }
   if (oath.alert_sms === false || oath.alert_sms === "false") {
     out.sms = "off";
@@ -461,6 +457,17 @@ async function handle(method, path, body, query = new URLSearchParams()) {
       day: emptyDay(),
     });
     save();
+    const oath = oaths.get(id);
+    const accept = SITE + "/accept.html?id=" + encodeURIComponent(id) +
+      "&from=" + encodeURIComponent(oath.name || "") + "&to=" + encodeURIComponent(oath.pname || "");
+    if (oath.pemail) {
+      await sendAlert(
+        oath,
+        (oath.name || "A trader") + " asked you to hold their TraderOath",
+        (oath.pname || "Lookout") + ",\n\n" +
+          (oath.name || "A trader") + " asked you to hold their rules.\nAccept: " + accept
+      );
+    }
     return json({
       ok: true,
       id,
