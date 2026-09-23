@@ -146,16 +146,48 @@ async function sendAlert(oath, subject, body) {
   return out;
 }
 
+function money(n) {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return "";
+  const abs = Math.abs(v).toFixed(2);
+  return (v < 0 ? "-$" : "$") + abs;
+}
+
 function evaluate(oath, fill) {
   const d = dayState(oath);
   const now = Date.now();
   const qty = Number(fill.qty || fill.quantity || 0);
   const symbol = String(fill.contractName || fill.symbol || fill.product || "").toUpperCase();
-  const pnl = Number(fill.pnl || fill.realizedPnl || 0);
+  const pnl = Number(fill.pnl || fill.realizedPnl || fill.profit || 0);
+  const price = Number(fill.price || fill.avgPrice || 0);
+  const side = String(fill.side || fill.action || fill.buySell || "").toLowerCase();
+  const line = [symbol || "fill"];
+  if (side) line.push(side);
+  if (qty) line.push("x" + qty);
+  if (price) line.push("@ " + price);
   const alerts = [];
 
   if (oath.alert_entry !== false) {
-    alerts.push({ type: "entry", subject: oath.name + " placed a trade", body: symbol + " x" + qty });
+    alerts.push({
+      type: "entry",
+      subject: oath.name + " placed a trade",
+      body: line.join(" "),
+    });
+  }
+
+  if (pnl > 0 && oath.alert_win !== false) {
+    alerts.push({
+      type: "win",
+      subject: oath.name + " took a win " + money(pnl),
+      body: line.join(" ") + "  closed " + money(pnl) + " profit",
+    });
+  }
+  if (pnl < 0 && oath.alert_loss !== false) {
+    alerts.push({
+      type: "loss",
+      subject: oath.name + " took a loss " + money(pnl),
+      body: line.join(" ") + "  closed " + money(pnl),
+    });
   }
 
   if (oath.rule_hours && oath.hourstart && oath.hourend) {
@@ -545,9 +577,11 @@ async function handle(method, path, body, query = new URLSearchParams()) {
     );
     if (!oath) return json({ ok: false, error: "Unknown oath" }, 404);
     const fill = {
-      symbol: body.symbol || body.instrument || body.Instrument || "",
+      symbol: body.symbol || body.instrument || body.Instrument || body.contractName || "",
       qty: body.qty || body.quantity || body.Quantity || 0,
-      pnl: body.pnl || body.PnL || 0,
+      pnl: body.pnl || body.PnL || body.realizedPnl || body.profit || 0,
+      price: body.price || body.avgPrice || body.Price || 0,
+      side: body.side || body.action || body.buySell || "",
       timestamp: body.timestamp || Date.now(),
     };
     const alerts = evaluate(oath, fill);
